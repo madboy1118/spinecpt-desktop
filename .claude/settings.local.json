@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(rm -rf node_modules package-lock.json)",
+      "Bash(npm install:*)",
+      "Bash(npx vite:*)",
+      "Bash(npm run:*)",
+      "Bash(grep -E '\\\\.\\(json|md|env|config\\)$')",
+      "Bash(find src:*)",
+      "Bash(node scripts/generate-icons.js)",
+      "Bash(node -e \"const m = require\\('png-to-ico'\\); console.log\\(typeof m, Object.keys\\(m\\)\\)\")"
+    ]
+  }
+}

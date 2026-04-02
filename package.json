@@ -1,0 +1,31 @@
+{
+  "name": "spinecpt-desktop",
+  "version": "1.0.0",
+  "description": "SpineCPT Pro — Spine surgery operative note optimization",
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build": "vite build && electron-builder",
+    "preview": "vite preview"
+  },
+  "author": "Sapan Patel",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "diff": "^8.0.4",
+    "dotenv": "^16.4.7",
+    "electron-updater": "^6.8.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.3"
+  }
+}
