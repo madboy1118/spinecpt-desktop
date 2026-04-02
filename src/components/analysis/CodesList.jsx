@@ -39,6 +39,23 @@ export default function CodesList({ analysis }) {
               </span>
             </div>
             <div style={{ fontSize: 11, color: X.t2, marginTop: 2 }}>{co.description}</div>
+            {/* Modifiers */}
+            {co.modifiers?.length > 0 && (
+              <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                {co.modifiers.map((m, mi) => (
+                  <span key={mi} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: X.pD, color: X.p, fontWeight: 700, fontFamily: mn }}>-{m}</span>
+                ))}
+              </div>
+            )}
+            {/* ICD-10 linkage */}
+            {co.linked_icd10?.length > 0 && (
+              <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 9, color: X.t4 }}>Dx:</span>
+                {co.linked_icd10.map((dx, di) => (
+                  <span key={di} style={{ fontSize: 9, padding: "1px 5px", borderRadius: 3, background: X.yD, color: X.y, fontFamily: mn }}>{dx}</span>
+                ))}
+              </div>
+            )}
             {levelWarn && (
               <div style={{ marginTop: 5, padding: 6, borderRadius: 4, background: X.oD, fontSize: 10, color: X.o, lineHeight: 1.5 }}>
                 {"\u26a0"} {levelWarn.message}

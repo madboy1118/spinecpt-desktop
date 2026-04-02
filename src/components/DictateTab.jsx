@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { X, ft, mn } from '../theme.js';
+import { useState, useRef, useCallback, useMemo, useEffect, useDeferredValue } from 'react';
+import { X, ft } from '../theme.js';
 import { createDictation } from '../modules/dictation.js';
-import { createWhisperDictation } from '../modules/whisperDictation.js';
+import { createLocalWhisperCppDictation } from '../modules/localWhisperCppDictation.js';
 import { createVoiceCommandProcessor, readBackText } from '../modules/voiceCommands.js';
 import { detectCodes, computeDetectedRVU } from '../modules/cptDetector.js';
 import { scoreCompliance } from '../modules/compliance.js';
@@ -21,6 +21,11 @@ import VoiceCommandFeedback from './dictation/VoiceCommandFeedback.jsx';
 import { ld, sv } from '../modules/storage.js';
 import Tutorial from './Tutorial.jsx';
 
+function normalizeEnginePreference(value) {
+  if (value === "whisper" || value === "realtime") return "local";
+  return value || "webspeech";
+}
+
 export default function DictateTab({ onSendToAnalyze, prof }) {
   const [noteText, setNoteText] = useState("");
   const [interim, setInterim] = useState("");
@@ -31,9 +36,14 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
   const [realtimeEnabled, setRealtimeEnabled] = useState(true);
   const [showCountdown, setShowCountdown] = useState(false);
   const [lastCommand, setLastCommand] = useState(null);
+  const [dictationError, setDictationError] = useState("");
+  const [localStatus, setLocalStatus] = useState({ available: false, missing: [] });
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialChecked, setTutorialChecked] = useState(false);
   const [restored, setRestored] = useState(false);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const deferredNoteText = useDeferredValue(noteText);
 
   const dictRef = useRef(null);
   const segmentHistory = useRef([]); // for undo
@@ -42,7 +52,7 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
 
   // Restore session state + load preferences
   useEffect(() => {
-    ld("speech-engine", "webspeech").then(setEngine);
+    ld("speech-engine", "webspeech").then((value) => setEngine(normalizeEnginePreference(value)));
     ld("spinecpt-tutorial-seen", false).then(seen => {
       if (!seen) setShowTutorial(true);
       setTutorialChecked(true);
@@ -62,8 +72,26 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
     });
   }, []);
 
+  useEffect(() => {
+    if (!window.electronAPI?.getLocalWhisperStatus) return;
+    window.electronAPI.getLocalWhisperStatus()
+      .then((status) => {
+        if (status) setLocalStatus(status);
+      })
+      .catch(() => {});
+  }, []);
+
   // Reset cursor position when template changes
-  useEffect(() => { cursorPos.current = noteText.length; }, [selectedTemplate]);
+  useEffect(() => {
+    cursorPos.current = noteText.length;
+    setCursorPosition(noteText.length);
+  }, [selectedTemplate]);
+
+  useEffect(() => {
+    if (!restored) return;
+    cursorPos.current = noteText.length;
+    setCursorPosition(noteText.length);
+  }, [restored]);
 
   // Persist noteText (debounced)
   useEffect(() => {
@@ -79,15 +107,15 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
   useEffect(() => { if (restored) sv("dictate-realtimeEnabled", realtimeEnabled); }, [realtimeEnabled]);
 
   // Keyword-based detection (instant, no API)
-  const matches = noteText.trim() ? detectCodes(noteText) : [];
+  const matches = deferredNoteText.trim() ? detectCodes(deferredNoteText) : [];
   const totalRvu = computeDetectedRVU(matches);
-  const compliance = noteText.trim() ? scoreCompliance(noteText) : { score: 0, results: [] };
+  const compliance = deferredNoteText.trim() ? scoreCompliance(deferredNoteText) : { score: 0, results: [] };
 
   // Real-time AI analysis hook (must be before templateGuide which uses its results)
   const { result: realtimeResult, isAnalyzing: realtimeAnalyzing, triggerNow } = useRealtimeAnalysis(
-    noteText,
+    deferredNoteText,
     {
-      enabled: realtimeEnabled && noteText.trim().split(/\s+/).length >= 30,
+      enabled: realtimeEnabled && !listening && deferredNoteText.trim().split(/\s+/).length >= 30,
       debounceMs: 10000,
       minWords: 30,
       templateId: selectedTemplate?.id,
@@ -143,9 +171,19 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
     },
   }), []); // stable — reads current values from refs
 
-  // Check Whisper support
-  const whisperSupported = !!(window.electronAPI?.transcribeWhisper);
+  // Check engine support. In Electron, bundled whisper.cpp is the low-latency path.
+  const isElectron = !!window.electronAPI;
+  const localSupported = !!(window.electronAPI?.transcribeLocalWhisper && localStatus.available);
   const SpeechRecognition = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const webSpeechWorks = !!SpeechRecognition && !isElectron;
+
+  // Auto-select local dictation in Electron if available
+  useEffect(() => {
+    if (isElectron && localSupported && engine === "webspeech") {
+      setEngine("local");
+      sv("speech-engine", "local");
+    }
+  }, [isElectron, localSupported, engine]);
 
   const createEngine = useCallback((eng) => {
     const onResult = ({ final, interim: int }) => {
@@ -159,31 +197,58 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
             // Insert at cursor position if user has been typing mid-note
             const pos = cursorPos.current;
             if (pos > 0 && pos < prev.length) {
-              cursorPos.current = pos + cleanText.length;
+              const nextPos = pos + cleanText.length;
+              cursorPos.current = nextPos;
+              setCursorPosition(nextPos);
               return prev.slice(0, pos) + cleanText + prev.slice(pos);
             }
-            cursorPos.current = prev.length + cleanText.length;
+            const nextPos = prev.length + cleanText.length;
+            cursorPos.current = nextPos;
+            setCursorPosition(nextPos);
             return prev + cleanText;
           });
         }
       }
       setInterim(int);
+      if (int || final) setDictationError("");
     };
 
-    if (eng === "whisper" && whisperSupported) {
-      return createWhisperDictation({
-        onResult, onEnd: () => setListening(false),
-        onError: (err) => console.error("Whisper error:", err),
-        chunkDurationMs: 5000,
+    if (eng === "local" && localSupported) {
+      return createLocalWhisperCppDictation({
+        onResult, onEnd: () => { setListening(false); setAudioLevel(0); },
+        onError: (err) => {
+          setDictationError(err);
+          setListening(false);
+          setAudioLevel(0);
+          console.error("Local dictation error:", err);
+        },
+        onAudioLevel: setAudioLevel,
       });
+    }
+    if (eng === "local") {
+      return {
+        supported: false,
+        start: () => {
+          const missing = localStatus.missing?.length ? `: missing ${localStatus.missing.join(", ")}` : "";
+          const message = `Local dictation unavailable${missing}`;
+          setDictationError(message);
+          return false;
+        },
+        stop: () => {},
+        isListening: () => false,
+      };
     }
     return createDictation({
       onResult, onEnd: () => setListening(false),
-      onError: (err) => console.error("Dictation error:", err),
+      onError: (err) => {
+        setDictationError(err);
+        setListening(false);
+        console.error("Dictation error:", err);
+      },
     });
-  }, [commandProcessor, whisperSupported]);
+  }, [commandProcessor, localSupported, localStatus.missing]);
 
-  const handleStart = useCallback(() => {
+  const handleStart = useCallback(async () => {
     // Insert template header for current section if auto-headers enabled
     if (autoHeaders && selectedTemplate && templateGuide.sections[templateGuide.currentSectionIndex]) {
       const sec = templateGuide.sections[templateGuide.currentSectionIndex];
@@ -197,19 +262,24 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
       dictRef.current = createEngine(engine);
       dictRef.current._engine = engine;
     }
-    dictRef.current.start();
+    setDictationError("");
+    const started = await dictRef.current.start();
+    if (!started) {
+      setListening(false);
+      return;
+    }
     setListening(true);
     setShowCountdown(false);
   }, [engine, createEngine, autoHeaders, selectedTemplate, templateGuide, noteText]);
 
   const handleStop = useCallback(() => {
-    dictRef.current?.stop();
     setListening(false);
     setInterim("");
+    dictRef.current?.stop();
   }, []);
 
   const handleToggleEngine = useCallback(() => {
-    const newEngine = engine === "whisper" ? "webspeech" : "whisper";
+    const newEngine = engine === "local" ? "webspeech" : "local";
     setEngine(newEngine);
     sv("speech-engine", newEngine);
     if (listening) {
@@ -244,6 +314,12 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
   }, [noteText, onSendToAnalyze]);
 
   const wordCount = noteText.split(/\s+/).filter(Boolean).length;
+  const previewCursor = Math.max(0, Math.min(cursorPosition, noteText.length));
+  const previewSegments = interim ? {
+    before: noteText.slice(0, previewCursor),
+    interim,
+    after: noteText.slice(previewCursor),
+  } : null;
 
   return (
     <div>
@@ -251,10 +327,38 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
       <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
         <VoiceButton
           listening={listening} onStart={handleStart} onStop={handleStop}
-          supported={!!SpeechRecognition || whisperSupported}
+          supported={localSupported || webSpeechWorks}
           engine={engine} onToggleEngine={handleToggleEngine}
-          whisperSupported={whisperSupported}
+          localSupported={localSupported}
         />
+        {isElectron && !localSupported && (
+          <span style={{ fontSize: 10, color: X.y, background: X.yD, padding: "3px 8px", borderRadius: 4 }}>
+            Local dictation unavailable{localStatus.missing?.length ? `: missing ${localStatus.missing.join(", ")}` : ""}
+          </span>
+        )}
+        {dictationError && (
+          <span style={{ fontSize: 10, color: X.r, background: X.rD, padding: "3px 8px", borderRadius: 4 }}>
+            {dictationError}
+          </span>
+        )}
+        {/* Audio level meter */}
+        {listening && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 1, height: 20 }}>
+              {[0.01, 0.02, 0.03, 0.05, 0.07, 0.09, 0.12, 0.16, 0.2].map((threshold, i) => (
+                <div key={i} style={{
+                  width: 3, borderRadius: 1,
+                  height: 4 + i * 2,
+                  background: audioLevel > threshold ? (i < 5 ? X.g : i < 7 ? X.y : X.r) : X.s3,
+                  transition: "background 0.05s",
+                }} />
+              ))}
+            </div>
+            <span style={{ fontSize: 9, color: audioLevel > 0.02 ? X.g : X.r, fontWeight: 600 }}>
+              {audioLevel > 0.02 ? "MIC OK" : "NO INPUT"}
+            </span>
+          </div>
+        )}
         <select
           value={selectedTemplate?.id || ""}
           onChange={e => setSelectedTemplate(TEMPLATES.find(t => t.id === e.target.value) || null)}
@@ -270,6 +374,11 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
             style={{ width: 12, height: 12, accentColor: X.ac }} />
           Live AI
         </label>
+        {listening && realtimeEnabled && (
+          <span style={{ fontSize: 10, color: X.t4 }}>
+            AI paused while dictating
+          </span>
+        )}
 
         {wordCount > 0 && (
           <span style={{ fontSize: 11, color: X.t3 }}>{wordCount} words</span>
@@ -310,7 +419,20 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 14 }}>
         {/* Left: Editor + Template Guide */}
         <div>
-          <LiveEditor value={noteText} onChange={(val) => { segmentHistory.current = []; setNoteText(val); }} interim={interim} listening={listening} onCursorPosition={pos => { cursorPos.current = pos; }} />
+          <LiveEditor
+            value={noteText}
+            previewSegments={previewSegments}
+            onChange={(val) => {
+              segmentHistory.current = [];
+              setNoteText(val);
+            }}
+            interim={interim}
+            listening={listening}
+            onCursorPosition={(pos) => {
+              cursorPos.current = pos;
+              setCursorPosition(pos);
+            }}
+          />
 
           {/* Template Guide (below editor) */}
           {selectedTemplate && (

@@ -43,7 +43,12 @@ export function useRealtimeAnalysis(noteText, { enabled = false, debounceMs = 10
   }, [templateId, prof]);
 
   useEffect(() => {
-    if (!enabled || wordCount < minWords) return;
+    if (!enabled || wordCount < minWords) {
+      abortRef.current?.abort();
+      setIsAnalyzing(false);
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      return;
+    }
 
     // Clear previous debounce
     if (timeoutRef.current) clearTimeout(timeoutRef.current);

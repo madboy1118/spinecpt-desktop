@@ -27,7 +27,9 @@ export default function StructuredExport({ finalNote, analysis, oRVU, eRVU, oCod
     codes.forEach(c => {
       const qty = c.qty || 1;
       const rvu = (c.rvu * qty).toFixed(1);
-      lines.push(`  ${c.code} — ${c.description || ""}${qty > 1 ? ` x${qty}` : ""} (${rvu} RVU)`);
+      const mods = c.modifiers?.length ? `-${c.modifiers.join(",")}` : "";
+      const linked = c.linked_icd10?.length ? ` → Dx: ${c.linked_icd10.join(", ")}` : "";
+      lines.push(`  ${c.code}${mods} — ${c.description || ""}${qty > 1 ? ` x${qty}` : ""} (${rvu} RVU)${linked}`);
     });
     if (icd10.length > 0) {
       lines.push("");
@@ -81,11 +83,20 @@ export default function StructuredExport({ finalNote, analysis, oRVU, eRVU, oCod
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: X.t4, marginBottom: 4 }}>CPT CODES</div>
             {codes.map((c, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-                <code style={{ fontFamily: mn, fontWeight: 700, fontSize: 12, color: X.ac, width: 50 }}>{c.code}</code>
-                <span style={{ flex: 1, fontSize: 11, color: X.t2 }}>{c.description}</span>
-                {(c.qty || 1) > 1 && <span style={{ fontSize: 9, padding: "1px 4px", borderRadius: 3, background: X.acD, color: X.ac, fontFamily: mn, fontWeight: 700 }}>x{c.qty}</span>}
-                <span style={{ fontSize: 10, color: X.p, fontFamily: mn, fontWeight: 600 }}>{((c.rvu || 0) * (c.qty || 1)).toFixed(1)}</span>
+              <div key={i} style={{ padding: "4px 0" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <code style={{ fontFamily: mn, fontWeight: 700, fontSize: 12, color: X.ac, width: 50 }}>{c.code}</code>
+                  {c.modifiers?.map((m, mi) => <span key={mi} style={{ fontSize: 9, padding: "1px 4px", borderRadius: 3, background: X.pD, color: X.p, fontWeight: 700, fontFamily: mn }}>-{m}</span>)}
+                  <span style={{ flex: 1, fontSize: 11, color: X.t2 }}>{c.description}</span>
+                  {(c.qty || 1) > 1 && <span style={{ fontSize: 9, padding: "1px 4px", borderRadius: 3, background: X.acD, color: X.ac, fontFamily: mn, fontWeight: 700 }}>x{c.qty}</span>}
+                  <span style={{ fontSize: 10, color: X.p, fontFamily: mn, fontWeight: 600 }}>{((c.rvu || 0) * (c.qty || 1)).toFixed(1)}</span>
+                </div>
+                {c.linked_icd10?.length > 0 && (
+                  <div style={{ display: "flex", gap: 4, marginLeft: 58, marginTop: 2 }}>
+                    <span style={{ fontSize: 9, color: X.t4 }}>Dx:</span>
+                    {c.linked_icd10.map((dx, di) => <span key={di} style={{ fontSize: 9, padding: "1px 4px", borderRadius: 3, background: X.yD, color: X.y, fontFamily: mn }}>{dx}</span>)}
+                  </div>
+                )}
               </div>
             ))}
           </div>

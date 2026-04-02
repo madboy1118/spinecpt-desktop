@@ -38,3 +38,23 @@ html, body {
   background: #38bdf840;
   color: #f1f5f9;
 }
+
+/* Tab transition */
+.tab-enter {
+  animation: tabIn 0.2s ease-out;
+}
+@keyframes tabIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Loading skeleton shimmer */
+.skeleton {
+  background: linear-gradient(90deg, #111a2f 25%, #18243d 50%, #111a2f 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}

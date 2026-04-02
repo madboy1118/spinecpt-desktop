@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { X, ft } from './theme.js';
+import { useState, useEffect, useCallback } from 'react';
+import { X, ft, setTheme, getTheme, toggleTheme } from './theme.js';
 import { useSurgeon } from './hooks/useSurgeon.js';
 import { useJobs } from './hooks/useJobs.js';
 import { ld, sv } from './modules/storage.js';
@@ -18,6 +18,14 @@ import DevTab from './components/DevTab.jsx';
 import ReportingTab from './components/ReportingTab.jsx';
 import UpdateNotification from './components/UpdateNotification.jsx';
 import TrainingTab from './components/TrainingTab.jsx';
+import SettingsTab, { VERSION } from './components/SettingsTab.jsx';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts.js';
+import { useSessionTimer } from './hooks/useSessionTimer.js';
+import { useRecentNotes } from './hooks/useRecentNotes.js';
+import { useToast } from './components/shared/ToastProvider.jsx';
+import TabTransition from './components/shared/TabTransition.jsx';
+import CommandPalette from './components/shared/CommandPalette.jsx';
+import Breadcrumb from './components/shared/Breadcrumb.jsx';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -34,6 +42,26 @@ export default function App() {
   const surgeonState = useSurgeon();
   const jobState = useJobs();
   const { isOffline, reason: offlineReason } = useOnlineStatus();
+  const { duration: sessionDuration } = useSessionTimer();
+  const { recentNotes, addRecentNote } = useRecentNotes();
+  const toast = useToast();
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [theme, setThemeState] = useState("dark");
+
+  // Load saved theme
+  useEffect(() => {
+    ld("spinecpt-theme", "dark").then(t => {
+      if (t === "light") { setTheme("light"); setThemeState("light"); }
+    });
+  }, []);
+
+  const handleToggleTheme = useCallback(() => {
+    const next = toggleTheme();
+    setThemeState(next);
+    sv("spinecpt-theme", next);
+    document.body.style.background = X.bg;
+    document.body.style.color = X.t1;
+  }, []);
 
   const {
     surgeon, prof, styleMem, editHist, editPrefs, cases, savedCases, customProfiles, billingCorrections,
@@ -84,6 +112,24 @@ export default function App() {
     setTab("analyze");
   };
 
+  // Global keyboard shortcuts
+  useKeyboardShortcuts({
+    onAnalyze: () => { if (tab === "analyze" && opNote.trim() && !loading) setAutoStartAnalysis(true); },
+    onNewNote: () => { setOpNote(""); setAnalysis(null); setError(null); },
+    onSave: () => { if (analysis) saveToTraining(new Set()); },
+    onToggleDictation: () => { if (tab !== "dictate") setTab("dictate"); },
+    onCommandPalette: () => setShowCommandPalette(true),
+  });
+
+  // Close confirmation listener
+  useEffect(() => {
+    if (!window.electronAPI?.onCheckUnsaved) return;
+    window.electronAPI.onCheckUnsaved(() => {
+      const isDirty = !!(opNote.trim() && !analysis) || loading;
+      window.electronAPI.respondUnsaved(isDirty);
+    });
+  }, [opNote, analysis, loading]);
+
   const handleSwitchSurgeon = async (s) => {
     await switchSurgeon(s);
     setAnalysis(null);
@@ -94,6 +140,8 @@ export default function App() {
   const handleAnalysisCompleted = async ({ jobId, surgeonId, surgeonName, result }) => {
     if (!currentUser || !result?._usage) return;
     await logApiUsage(result._usage, currentUser.id, surgeonId);
+    addRecentNote(opNote, result, surgeonName);
+    toast.success(`Analysis complete — Grade ${result.overall_documentation_grade || "?"}`);
     await logAuditEvent("analysis_completed", currentUser.id, surgeonId, surgeonName, jobId, {
       grade: result.overall_documentation_grade,
       codeCount: result.identified_codes?.length || 0,
@@ -149,6 +197,7 @@ export default function App() {
     ).slice(-50);
     await updateSavedCases(updated);
     if (currentUser) logAuditEvent("case_saved", currentUser.id, surgeon, prof.name, activeJobId, { grade: tc.grade, codes: tc.codes.length });
+    toast.success("Case saved to training");
   };
 
   const handleCreateProfile = async () => {
@@ -177,9 +226,26 @@ export default function App() {
         getTraining={getTraining} cases={cases} styleMem={styleMem}
         currentUser={currentUser} onLogout={handleLogout}
         jobs={jobs} isOffline={isOffline} offlineReason={offlineReason}
+        sessionDuration={sessionDuration}
+        theme={theme} onToggleTheme={handleToggleTheme}
       />
 
+      {/* Breadcrumb */}
+      <Breadcrumb trail={[
+        { label: tab.charAt(0).toUpperCase() + tab.slice(1), onClick: () => {} },
+        ...(analysis && tab === "analyze" ? [{ label: "Analysis Results" }] : []),
+      ]} />
+
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 14px" }}>
+
+        {/* Command Palette */}
+        {showCommandPalette && (
+          <CommandPalette
+            onClose={() => setShowCommandPalette(false)}
+            setTab={setTab} savedCases={savedCases} allSurgeons={allSurgeons}
+            switchSurgeon={handleSwitchSurgeon} setOpNote={setOpNote} setAnalysis={setAnalysis}
+          />
+        )}
 
         {/* New Profile Modal */}
         {showNewProfile && (
@@ -221,6 +287,8 @@ export default function App() {
             </div>
           </div>
         )}
+
+        <TabTransition tabKey={tab}>
 
         {/* DICTATE */}
         {tab === "dictate" && (
@@ -292,8 +360,18 @@ export default function App() {
           <ReportingTab allSurgeons={allSurgeons} savedCases={savedCases} jobs={jobs} surgeon={surgeon} />
         )}
 
+        {/* SETTINGS */}
+        {tab === "settings" && <SettingsTab />}
+
         {/* DEV — only for developers */}
         {tab === "dev" && currentUser?.role === "developer" && <DevTab jobs={jobs} surgeon={surgeon} allSurgeons={allSurgeons} addBillingCorrection={addBillingCorrection} />}
+
+        </TabTransition>
+      </div>
+
+      {/* Version footer */}
+      <div style={{ textAlign: "center", padding: "12px 0 16px", borderTop: `1px solid ${X.b1}`, marginTop: 8 }}>
+        <span style={{ fontSize: 10, color: X.t4 }}>SpineCPT Pro v{VERSION} &middot; &copy; 2026 University of Maryland</span>
       </div>
 
       <style>{`

@@ -4,8 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SpineCPT Pro</title>
+    <style>
+      body { margin: 0; background: #060911; }
+      #splash {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        background: #060911; transition: opacity 0.5s;
+      }
+      #splash.fade { opacity: 0; pointer-events: none; }
+      #splash .logo {
+        width: 72px; height: 72px; border-radius: 18px;
+        background: linear-gradient(135deg, #38bdf8, #a78bfa);
+        display: flex; align-items: center; justify-content: center;
+        font: 900 36px/1 system-ui, sans-serif; color: #060911;
+        animation: pulse-logo 2s ease infinite;
+      }
+      #splash .title { font: 700 22px/1 'Outfit', system-ui, sans-serif; color: #f1f5f9; margin-top: 16px; }
+      #splash .sub { font: 400 12px/1 'Outfit', system-ui, sans-serif; color: #64748b; margin-top: 8px; }
+      #splash .bar { width: 120px; height: 3px; background: #1c2d50; border-radius: 2px; margin-top: 24px; overflow: hidden; }
+      #splash .bar-fill { height: 100%; background: linear-gradient(90deg, #38bdf8, #a78bfa); border-radius: 2px; animation: load 1.5s ease infinite; }
+      @keyframes load { 0%{width:5%} 50%{width:70%} 100%{width:95%} }
+      @keyframes pulse-logo { 0%,100%{box-shadow:0 0 0 rgba(56,189,248,0)} 50%{box-shadow:0 0 30px rgba(56,189,248,0.3)} }
+    </style>
   </head>
   <body>
+    <div id="splash">
+      <div class="logo">S</div>
+      <div class="title">SpineCPT Pro</div>
+      <div class="sub">Loading...</div>
+      <div class="bar"><div class="bar-fill"></div></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

@@ -274,6 +274,30 @@ export default function AnalyzeTab({
       </div>
     </div>)}
 
+    {/* Floating copy buttons — always visible when analysis exists */}
+    {analysis && (
+      <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 100, display: "flex", gap: 8 }}>
+        <button onClick={() => { copy(getFinal()); }} title="Copy optimized note to clipboard" style={{
+          padding: "12px 24px", borderRadius: 10, border: "none", cursor: "pointer", fontFamily: ft,
+          background: `linear-gradient(135deg,${X.ac},${X.p})`, color: X.bg, fontWeight: 700, fontSize: 13,
+          boxShadow: `0 4px 20px rgba(56,189,248,0.3)`, display: "flex", alignItems: "center", gap: 8,
+        }}>{"\u2398"} Copy Note</button>
+        <button onClick={() => {
+          const codes = (analysis.identified_codes || []).filter(c => c.status === "supported" || c.status === "partial");
+          const codeBlock = codes.map(c => {
+            const mods = c.modifiers?.length ? `-${c.modifiers.join(",")}` : "";
+            const icd = c.linked_icd10?.length ? ` [${c.linked_icd10.join(", ")}]` : "";
+            return `${c.code}${mods}${c.qty > 1 ? ` x${c.qty}` : ""} — ${c.description}${icd}`;
+          }).join("\n");
+          copy(codeBlock);
+        }} title="Copy CPT codes with modifiers and ICD-10 linkage" style={{
+          padding: "12px 16px", borderRadius: 10, border: `1px solid ${X.ac}40`, cursor: "pointer", fontFamily: ft,
+          background: X.s1, color: X.ac, fontWeight: 600, fontSize: 12,
+          boxShadow: `0 4px 20px rgba(0,0,0,0.3)`, display: "flex", alignItems: "center", gap: 6,
+        }}>{"\u2630"} Copy Codes</button>
+      </div>
+    )}
+
     {/* Results */}
     {analysis && (<div>
       <RVUComparison oRVU={oRVU} eRVU={eRVU} oCodes={oCodes} eCodes={eCodes} rate={rate} />

@@ -150,6 +150,20 @@ ${(() => {
   return lines.join("\n");
 })()}
 
+CPT MODIFIER RULES:
+- Modifier 59 (Distinct Procedural Service): Use when two procedures are performed at the same session but are truly separate (e.g., decompression at a different level than fusion)
+- Modifier 51 (Multiple Procedures): Applied automatically by payers to additional procedures; generally do not append manually
+- Modifier 62 (Two Surgeons): When two surgeons perform distinct parts of a procedure
+- Modifier 22 (Increased Procedural Services): When work substantially exceeds the typical — document WHY (e.g., severe adhesions, revision, morbid obesity)
+- Modifier 50 (Bilateral Procedure): When the same procedure is performed bilaterally
+- Only suggest modifiers when documentation clearly supports them. Include in "modifiers" array for each code.
+
+ICD-10 LINKAGE RULES:
+- Each CPT code MUST have at least one linked ICD-10 diagnosis code in "linked_icd10" array
+- The diagnosis must medically justify the procedure (e.g., M48.06 stenosis justifies 63047 decompression)
+- Payers reject claims when diagnosis does not support the procedure — this is critical
+- Use the most specific ICD-10 code available (laterality, level, encounter type)
+
 RULES:
 1. NEVER suggest billing for unperformed procedures
 2. PRESERVE this surgeon's EXACT voice \u2014 use THEIR terms, match THEIR style
@@ -172,7 +186,7 @@ Return ONLY valid JSON (NO markdown fences, NO preamble):
 "terminology_observations":["Only NEW terms not already documented above"],
 "original_rvu":{"codes":[{"code":"63047","rvu":17.46,"description":"..."}],"total":0.0},
 "enhanced_rvu":{"codes":[{"code":"63047","rvu":17.46,"description":"...","new":false},{"code":"22848","rvu":7.88,"description":"...","new":true}],"total":0.0},
-"identified_codes":[{"code":"XXXXX","description":"...","status":"supported|partial|gap","confidence":0.0,"suggested_improvement":"...","is_addon":false,"rvu":0.0,"qty":1}],
+"identified_codes":[{"code":"XXXXX","description":"...","status":"supported|partial|gap","confidence":0.0,"suggested_improvement":"...","is_addon":false,"rvu":0.0,"qty":1,"modifiers":["59"],"linked_icd10":["M48.06"]}],
 "bundling_warnings":["..."],
 "missing_elements":["..."],
 "overall_documentation_grade":"A|B|C|D|F",
