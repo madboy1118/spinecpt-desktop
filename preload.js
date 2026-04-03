@@ -9,8 +9,7 @@ contextBridge.exposeInMainWorld('storage', {
 contextBridge.exposeInMainWorld('electronAPI', {
   analyze: (payload) => ipcRenderer.invoke('analyze', payload),
   transcribeWhisper: (audioBuffer) => ipcRenderer.invoke('transcribe-whisper', audioBuffer),
-  getLocalWhisperStatus: () => ipcRenderer.invoke('local-whisper-status'),
-  transcribeLocalWhisper: (payload) => ipcRenderer.invoke('transcribe-local-whisper', payload),
+  getWhisperFlowStatus: () => ipcRenderer.invoke('whisper-flow-status'),
   startRealtimeTranscription: (options) => ipcRenderer.invoke('realtime-transcription-start', options),
   appendRealtimeTranscriptionAudio: (payload) => ipcRenderer.send('realtime-transcription-append', payload),
   stopRealtimeTranscription: (payload) => ipcRenderer.invoke('realtime-transcription-stop', payload),

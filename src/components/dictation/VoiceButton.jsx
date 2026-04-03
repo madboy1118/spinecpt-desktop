@@ -1,6 +1,6 @@
 import { X, ft } from '../../theme.js';
 
-export default function VoiceButton({ listening, onStart, onStop, supported, engine, onToggleEngine, localSupported }) {
+export default function VoiceButton({ listening, onStart, onStop, supported, engine, onToggleEngine, whisperFlowSupported }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
       {supported ? (
@@ -17,15 +17,15 @@ export default function VoiceButton({ listening, onStart, onStop, supported, eng
         <div style={{ fontSize: 11, color: X.t3 }}>Speech recognition not available</div>
       )}
       {/* Engine toggle */}
-      {localSupported && (
+      {whisperFlowSupported && (
         <button onClick={onToggleEngine} style={{
           padding: "5px 10px", borderRadius: 5, fontSize: 9, fontWeight: 700, fontFamily: ft,
-          border: `1px solid ${engine === "local" ? X.p : X.b1}`,
-          background: engine === "local" ? X.pD : X.s2,
-          color: engine === "local" ? X.p : X.t3,
+          border: `1px solid ${engine === "whisperflow" ? X.p : X.b1}`,
+          background: engine === "whisperflow" ? X.pD : X.s2,
+          color: engine === "whisperflow" ? X.p : X.t3,
           cursor: "pointer",
         }}>
-          {engine === "local" ? "Local" : "Web Speech"}
+          {engine === "whisperflow" ? "WhisperFlow" : "Web Speech"}
         </button>
       )}
       {listening && (

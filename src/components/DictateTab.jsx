@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect, useDeferredValue } from 'react';
 import { X, ft } from '../theme.js';
 import { createDictation } from '../modules/dictation.js';
-import { createLocalWhisperCppDictation } from '../modules/localWhisperCppDictation.js';
+import { createWhisperFlowDictation } from '../modules/whisperFlowDictation.js';
 import { createVoiceCommandProcessor, readBackText } from '../modules/voiceCommands.js';
 import { detectCodes, computeDetectedRVU } from '../modules/cptDetector.js';
 import { scoreCompliance } from '../modules/compliance.js';
@@ -22,7 +22,7 @@ import { ld, sv } from '../modules/storage.js';
 import Tutorial from './Tutorial.jsx';
 
 function normalizeEnginePreference(value) {
-  if (value === "whisper" || value === "realtime") return "local";
+  if (value === "whisper" || value === "realtime" || value === "local") return "whisperflow";
   return value || "webspeech";
 }
 
@@ -37,7 +37,7 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
   const [showCountdown, setShowCountdown] = useState(false);
   const [lastCommand, setLastCommand] = useState(null);
   const [dictationError, setDictationError] = useState("");
-  const [localStatus, setLocalStatus] = useState({ available: false, missing: [] });
+  const [whisperFlowStatus, setWhisperFlowStatus] = useState({ available: false, baseUrl: "http://127.0.0.1:8181", wsUrl: "ws://127.0.0.1:8181/ws", error: "" });
   const [showTutorial, setShowTutorial] = useState(false);
   const [tutorialChecked, setTutorialChecked] = useState(false);
   const [restored, setRestored] = useState(false);
@@ -73,12 +73,23 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
   }, []);
 
   useEffect(() => {
-    if (!window.electronAPI?.getLocalWhisperStatus) return;
-    window.electronAPI.getLocalWhisperStatus()
-      .then((status) => {
-        if (status) setLocalStatus(status);
-      })
-      .catch(() => {});
+    if (!window.electronAPI?.getWhisperFlowStatus) return undefined;
+
+    let active = true;
+    const refresh = () => {
+      window.electronAPI.getWhisperFlowStatus()
+        .then((status) => {
+          if (active && status) setWhisperFlowStatus(status);
+        })
+        .catch(() => {});
+    };
+
+    refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, []);
 
   // Reset cursor position when template changes
@@ -171,19 +182,19 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
     },
   }), []); // stable — reads current values from refs
 
-  // Check engine support. In Electron, bundled whisper.cpp is the low-latency path.
+  // Check engine support. In Electron, WhisperFlow is the local low-latency path.
   const isElectron = !!window.electronAPI;
-  const localSupported = !!(window.electronAPI?.transcribeLocalWhisper && localStatus.available);
+  const whisperFlowSupported = !!(window.electronAPI?.getWhisperFlowStatus && whisperFlowStatus.available);
   const SpeechRecognition = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
   const webSpeechWorks = !!SpeechRecognition && !isElectron;
 
-  // Auto-select local dictation in Electron if available
+  // Auto-select WhisperFlow dictation in Electron if available
   useEffect(() => {
-    if (isElectron && localSupported && engine === "webspeech") {
-      setEngine("local");
-      sv("speech-engine", "local");
+    if (isElectron && whisperFlowSupported && engine === "webspeech") {
+      setEngine("whisperflow");
+      sv("speech-engine", "whisperflow");
     }
-  }, [isElectron, localSupported, engine]);
+  }, [isElectron, whisperFlowSupported, engine]);
 
   const createEngine = useCallback((eng) => {
     const onResult = ({ final, interim: int }) => {
@@ -213,24 +224,25 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
       if (int || final) setDictationError("");
     };
 
-    if (eng === "local" && localSupported) {
-      return createLocalWhisperCppDictation({
+    if (eng === "whisperflow" && whisperFlowSupported) {
+      return createWhisperFlowDictation({
         onResult, onEnd: () => { setListening(false); setAudioLevel(0); },
         onError: (err) => {
           setDictationError(err);
           setListening(false);
           setAudioLevel(0);
-          console.error("Local dictation error:", err);
+          console.error("WhisperFlow dictation error:", err);
         },
         onAudioLevel: setAudioLevel,
+        wsUrl: whisperFlowStatus.wsUrl,
       });
     }
-    if (eng === "local") {
+    if (eng === "whisperflow") {
       return {
         supported: false,
         start: () => {
-          const missing = localStatus.missing?.length ? `: missing ${localStatus.missing.join(", ")}` : "";
-          const message = `Local dictation unavailable${missing}`;
+          const detail = whisperFlowStatus.error ? `: ${whisperFlowStatus.error}` : "";
+          const message = `WhisperFlow unavailable${detail}`;
           setDictationError(message);
           return false;
         },
@@ -246,7 +258,7 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
         console.error("Dictation error:", err);
       },
     });
-  }, [commandProcessor, localSupported, localStatus.missing]);
+  }, [commandProcessor, whisperFlowSupported, whisperFlowStatus.error, whisperFlowStatus.wsUrl]);
 
   const handleStart = useCallback(async () => {
     // Insert template header for current section if auto-headers enabled
@@ -279,7 +291,7 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
   }, []);
 
   const handleToggleEngine = useCallback(() => {
-    const newEngine = engine === "local" ? "webspeech" : "local";
+    const newEngine = engine === "whisperflow" ? "webspeech" : "whisperflow";
     setEngine(newEngine);
     sv("speech-engine", newEngine);
     if (listening) {
@@ -327,13 +339,13 @@ export default function DictateTab({ onSendToAnalyze, prof }) {
       <div style={{ display: "flex", gap: 8, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
         <VoiceButton
           listening={listening} onStart={handleStart} onStop={handleStop}
-          supported={localSupported || webSpeechWorks}
+          supported={whisperFlowSupported || webSpeechWorks}
           engine={engine} onToggleEngine={handleToggleEngine}
-          localSupported={localSupported}
+          whisperFlowSupported={whisperFlowSupported}
         />
-        {isElectron && !localSupported && (
+        {isElectron && !whisperFlowSupported && (
           <span style={{ fontSize: 10, color: X.y, background: X.yD, padding: "3px 8px", borderRadius: 4 }}>
-            Local dictation unavailable{localStatus.missing?.length ? `: missing ${localStatus.missing.join(", ")}` : ""}
+            WhisperFlow unavailable{whisperFlowStatus.error ? `: ${whisperFlowStatus.error}` : ""}
           </span>
         )}
         {dictationError && (

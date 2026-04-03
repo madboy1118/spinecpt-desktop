@@ -14,6 +14,7 @@ const realtimeTranscriptionSessions = new Map();
 const REALTIME_URL = process.env.OPENAI_REALTIME_TRANSCRIPTION_URL || 'wss://api.openai.com/v1/realtime';
 const REALTIME_MODEL = process.env.OPENAI_REALTIME_TRANSCRIPTION_MODEL || 'gpt-4o-transcribe';
 const REALTIME_PROMPT = 'You are transcribing a spine surgeon dictating an operative note. Preserve medical terminology. Common terms: laminectomy, foraminotomy, facetectomy, pedicle screws, TLIF, PLIF, ACDF, decompression, stenosis, spondylolisthesis, corpectomy, kyphoplasty, interbody cage, neuromonitoring, EMG, fluoroscopy, Kerrison rongeur, ligamentum flavum, thecal sac, dura, nerve root, S2AI, posterolateral fusion, decortication, autograft, allograft.';
+const WHISPER_FLOW_BASE_URL = (process.env.WHISPER_FLOW_BASE_URL || 'http://127.0.0.1:8181').replace(/\/+$/, '');
 
 function getRealtimeSession(wcId) { return realtimeTranscriptionSessions.get(wcId) || null; }
 
@@ -30,6 +31,17 @@ function teardownRealtimeSession(session, { reason = 'closed', notify = true, cl
   if (session.closeTimer) clearTimeout(session.closeTimer);
   if (closeSocket && session.ws?.readyState < WebSocket.CLOSING) try { session.ws.close(); } catch {}
   if (notify) sendRealtimeEvent(session, { type: 'realtime.transcription.closed', reason });
+}
+
+function getWhisperFlowStatusPayload(overrides = {}) {
+  const wsUrl = `${WHISPER_FLOW_BASE_URL.replace(/^http/i, 'ws')}/ws`;
+  return {
+    available: false,
+    baseUrl: WHISPER_FLOW_BASE_URL,
+    wsUrl,
+    error: '',
+    ...overrides,
+  };
 }
 
 function startRealtimeSession(sender, options = {}) {
@@ -167,6 +179,21 @@ ipcMain.handle('check-api-status', async () => {
   let isOnline = true;
   try { await fetch('https://api.anthropic.com', { method: 'HEAD', signal: AbortSignal.timeout(3000) }); } catch { isOnline = false; }
   return { hasApiKey, isOnline };
+});
+
+ipcMain.handle('whisper-flow-status', async () => {
+  try {
+    const res = await fetch(`${WHISPER_FLOW_BASE_URL}/health`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(1500),
+    });
+    if (!res.ok) {
+      return getWhisperFlowStatusPayload({ error: `health check failed (${res.status})` });
+    }
+    return getWhisperFlowStatusPayload({ available: true });
+  } catch (err) {
+    return getWhisperFlowStatusPayload({ error: err.message || 'service unavailable' });
+  }
 });
 
 // ═══ STORAGE ═══

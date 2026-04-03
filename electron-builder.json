@@ -18,15 +18,6 @@
     "preload.js",
     "package.json"
   ],
-  "extraResources": [
-    {
-      "from": "vendor/whispercpp",
-      "to": "whispercpp",
-      "filter": [
-        "**/*"
-      ]
-    }
-  ],
   "win": {
     "target": "nsis",
     "icon": "build/icon.png",

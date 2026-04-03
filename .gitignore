@@ -4,6 +4,3 @@ release/
 .env
 .claude/settings.local.json
 *.log
-!vendor/whispercpp/bin/
-!vendor/whispercpp/bin/Release/
-!vendor/whispercpp/bin/Release/**
